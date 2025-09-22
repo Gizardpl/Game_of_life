@@ -33,6 +33,67 @@ pub struct GameConfig {
     
     /// Margines pozostawiany przy optymalizacji rozmiaru planszy
     pub optimization_margin: usize,
+    
+    /// Parametry interfejsu użytkownika
+    pub ui_config: UIConfig,
+}
+
+/// Konfiguracja parametrów interfejsu użytkownika
+#[derive(Debug, Clone)]
+pub struct UIConfig {
+    /// Domyślna prędkość symulacji (generacje na sekundę)
+    pub default_simulation_speed: f32,
+    
+    /// Minimalna prędkość symulacji
+    pub min_simulation_speed: f32,
+    
+    /// Maksymalna prędkość symulacji
+    pub max_simulation_speed: f32,
+    
+    /// Krok zmiany prędkości na suwaку
+    pub simulation_speed_step: f32,
+    
+    /// Domyślny rozmiar przycisków (szerokość, wysokość)
+    pub default_button_size: (f32, f32),
+    
+    /// Rozmiary okna aplikacji
+    pub window_config: WindowConfig,
+}
+
+/// Konfiguracja okna aplikacji
+#[derive(Debug, Clone)]
+pub struct WindowConfig {
+    /// Domyślny rozmiar okna (szerokość, wysokość)
+    pub default_size: (f32, f32),
+    
+    /// Minimalny rozmiar okna (szerokość, wysokość)
+    pub min_size: (f32, f32),
+    
+    /// Tytuł okna
+    pub title: String,
+}
+
+impl Default for UIConfig {
+    fn default() -> Self {
+        Self {
+            default_simulation_speed: 2.0,
+            min_simulation_speed: 0.1,
+            max_simulation_speed: 100.0,
+            simulation_speed_step: 0.1,
+            default_button_size: (100.0, 30.0),
+            window_config: WindowConfig::default(),
+        }
+    }
+}
+
+impl Default for WindowConfig {
+    fn default() -> Self {
+        Self {
+            default_size: (1200.0, 800.0),
+            min_size: (800.0, 600.0),
+            title: "Conway's Game of Life".to_string(),
+        }
+    }
 }
 
 impl Default for GameConfig {
@@ -43,13 +104,16 @@ impl Default for GameConfig {
             survival_neighbors: 2..=3,        // Przeżycie przy 2 lub 3 sąsiadach
             
             // Ograniczenia rozmiaru planszy
-            max_board_size: 100,              // Maksymalny rozmiar 100x100
-            initial_board_size: 10,          // Początkowy rozmiar planszy
+            max_board_size: 101,              // Maksymalny rozmiar 101x101
+            initial_board_size: 9,          // Początkowy rozmiar planszy
             
             // Parametry rozszerzania
             expansion_margin: 2,              // Rozszerzaj gdy żywe komórki są 2 pola od krawędzi
             expansion_layers: 1,              // Dodawaj 1 warstwę na raz
             optimization_margin: 3,           // Pozostaw 3 pola marginesu przy optymalizacji
+            
+            // Konfiguracja interfejsu użytkownika
+            ui_config: UIConfig::default(),
         }
     }
 }
