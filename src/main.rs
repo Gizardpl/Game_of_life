@@ -238,10 +238,35 @@ impl GameOfLifeApp {
         self.side_panel.increment_generation();
         self.side_panel.set_alive_cells_count(self.board.count_alive_cells());
         
-        // Sprawdzamy czy plansza potrzebuje rozszerzenia
+        // Zarządzanie rozmiarem planszy w zależności od trybu
         let config = config::get_config();
-        if let Some(expanded_board) = self.board.auto_expand_if_needed(config.expansion_margin) {
-            self.board = expanded_board;
+        
+        match config.board_size_mode {
+            config::BoardSizeMode::Static => {
+                // W trybie Static NIGDY nie rozszerzamy planszy
+                // Plansza ma stały rozmiar i nie może się zmieniać
+            }
+            config::BoardSizeMode::Dynamic => {
+                // W trybie Dynamic zarządzamy rozmiarem automatycznie
+                
+                // Najpierw sprawdzamy czy plansza potrzebuje rozszerzenia
+                if let Some(expanded_board) = self.board.auto_expand_if_needed(config.expansion_margin) {
+                    self.board = expanded_board;
+                } else {
+                    // Jeśli nie rozszerzaliśmy, sprawdzamy czy można zoptymalizować rozmiar
+                    // Optymalizujemy tylko jeśli plansza nie jest zbyt mała
+                    if self.board.width() > config.optimization_margin * 4 && 
+                       self.board.height() > config.optimization_margin * 4 {
+                        if let Some(optimized_board) = self.board.optimize_size(config.optimization_margin) {
+                            // Sprawdzamy czy optymalizacja rzeczywiście zmniejszyła planszę
+                            if optimized_board.width() < self.board.width() || 
+                               optimized_board.height() < self.board.height() {
+                                self.board = optimized_board;
+                            }
+                        }
+                    }
+                }
+            }
         }
         
         // Invalidujemy cache przewidywania po zmianie stanu

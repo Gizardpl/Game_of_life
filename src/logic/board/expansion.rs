@@ -6,6 +6,7 @@ use crate::config::get_config;
 /// Implementuje logikę powiększania planszy poprzez dodanie jednej warstwy
 /// pustych (martwych) komórek dookoła istniejącej struktury.
 
+
 impl Board {
     pub fn expand(&self) -> Board {
         // Obliczamy nowe wymiary - dodajemy po jednej komórce z każdej strony
@@ -74,11 +75,18 @@ impl Board {
     /// Sprawdza czy istnieją żywe komórki w określonej odległości od krawędzi planszy.
     /// Jeśli tak, automatycznie rozszerza planszę aby zapewnić odpowiedni margines.
     /// Respektuje maksymalny rozmiar planszy zdefiniowany w konfiguracji.
+    /// UWAGA: Funkcja działa tylko w trybie Dynamic - w trybie Static zawsze zwraca None.
     pub fn auto_expand_if_needed(&self, margin: usize) -> Option<Board> {
         let config = get_config();
+        
+        // W trybie Static NIGDY nie rozszerzamy planszy
+        if !config.can_expand_in_current_mode() {
+            return None;
+        }
+        
         let mut needs_expansion = false;
         
-        // Sprawdzamy czy plansza może być rozszerzona
+        // Sprawdzamy czy plansza może być rozszerzona (nie osiągnęła maksymalnego rozmiaru)
         if !config.can_expand(self.width(), self.height(), config.expansion_layers) {
             // Plansza osiągnęła maksymalny rozmiar - nie rozszerzamy
             return None;
@@ -156,49 +164,126 @@ impl Board {
         Some(expanded_board)
     }
 
-    /// Optymalizuje rozmiar planszy poprzez usunięcie pustych krawędzi
+    /// Optymalizuje rozmiar planszy poprzez iteracyjne usuwanie pustych pierścieni krawędzi
     /// 
-    /// Analizuje planszę i znajduje najmniejszy prostokąt zawierający
-    /// wszystkie żywe komórki. Tworzy nową planszę o optymalnych wymiarach.
+    /// Algorytm działa następująco:
+    /// 1. Sprawdza czy można usunąć cały zewnętrzny pierścień (zachowując margines od żywych komórek)
+    /// 2. Jeśli tak, usuwa jeden kompletny pierścień i sprawdza ponownie
+    /// 3. Powtarza proces aż nie można już więcej usunąć
+    /// 4. Zachowuje dokładnie `margin` pustych komórek od najbliższych żywych komórek
+    /// 5. ZAWSZE zwraca kwadratową planszę
     pub fn optimize_size(&self, margin: usize) -> Option<Board> {
-        // Znajdujemy granice obszaru z żywymi komórkami
-        let alive_cells: Vec<(usize, usize)> = self.iter_alive_cells().collect();
+        // Plansza musi być kwadratem - bierzemy mniejszy wymiar jako bazę
+        let current_size = self.width().min(self.height());
         
-        if alive_cells.is_empty() {
-            // Jeśli nie ma żywych komórek, zwracamy małą planszę
-            return Some(Board::new(2 * margin + 1, 2 * margin + 1));
+        if current_size <= 2 * margin + 1 {
+            // Plansza jest już minimalna - nie można jej zmniejszyć
+            return None;
         }
         
-        // Znajdujemy skrajne współrzędne
-        let min_x = alive_cells.iter().map(|(x, _)| *x).min().unwrap();
-        let max_x = alive_cells.iter().map(|(x, _)| *x).max().unwrap();
-        let min_y = alive_cells.iter().map(|(_, y)| *y).min().unwrap();
-        let max_y = alive_cells.iter().map(|(_, y)| *y).max().unwrap();
+        // Rozpoczynamy z kwadratową wersją aktualnej planszy
+        let mut current_board = self.resize_to_square(current_size);
+        let mut was_optimized = false;
         
-        // Obliczamy nowe wymiary z marginesem
-        let start_x = min_x.saturating_sub(margin);
-        let start_y = min_y.saturating_sub(margin);
-        let end_x = (max_x + margin + 1).min(self.width());
-        let end_y = (max_y + margin + 1).min(self.height());
+        loop {
+            // Sprawdzamy czy można usunąć cały zewnętrzny pierścień
+            if current_board.can_remove_outer_ring(margin) {
+                // Usuwamy jeden kompletny pierścień z wszystkich stron
+                current_board = current_board.remove_outer_ring();
+                was_optimized = true;
+                
+                // Sprawdzamy czy plansza nie stała się zbyt mała
+                if current_board.width() <= 2 * margin + 1 {
+                    break;
+                }
+            } else {
+                // Nie można usunąć więcej pierścieni
+                break;
+            }
+        }
         
-        let new_width = end_x - start_x;
-        let new_height = end_y - start_y;
+        // Zwracamy zoptymalizowaną planszę tylko jeśli rzeczywiście ją zmniejszyliśmy
+        if was_optimized {
+            Some(current_board)
+        } else {
+            None
+        }
+    }
+    
+    /// Sprawdza czy można usunąć cały zewnętrzny pierścień zachowując margines
+    /// 
+    /// Zewnętrzny pierścień to wszystkie komórki na krawędzi planszy:
+    /// - Cały pierwszy wiersz (y = 0)
+    /// - Cały ostatni wiersz (y = height - 1) 
+    /// - Cała pierwsza kolumna (x = 0, bez narożników już policzone w wierszach)
+    /// - Cała ostatnia kolumna (x = width - 1, bez narożników już policzone w wierszach)
+    fn can_remove_outer_ring(&self, margin: usize) -> bool {
+        let size = self.width(); // Plansza jest kwadratem
         
-        // Tworzymy nową, zoptymalizowaną planszę
-        let mut optimized_board = Board::new(new_width, new_height);
+        if size <= 2 * margin + 1 {
+            return false;
+        }
         
-        // Przepisujemy fragment starej planszy
-        for y in start_y..end_y {
-            for x in start_x..end_x {
-                if let Some(cell_state) = self.get_cell(x, y) {
-                    let new_x = x - start_x;
-                    let new_y = y - start_y;
-                    optimized_board.set_cell(new_x, new_y, cell_state);
+        // Sprawdzamy czy w zewnętrznym pierścieniu i następnych `margin` warstwach są żywe komórki
+        // Jeśli znajdziemy żywą komórkę w obszarze który zostałby usunięty lub zbyt blisko krawędzi, 
+        // nie możemy usunąć pierścienia
+        
+        for layer in 0..=margin {
+            if layer >= size / 2 {
+                break; // Nie ma więcej warstw do sprawdzenia
+            }
+            
+            // Sprawdzamy warstwę `layer` od krawędzi
+            // Górny i dolny wiersz warstwy
+            for x in layer..(size - layer) {
+                if let Some(CellState::Alive) = self.get_cell(x, layer) {
+                    return false;
+                }
+                if let Some(CellState::Alive) = self.get_cell(x, size - 1 - layer) {
+                    return false;
+                }
+            }
+            
+            // Lewa i prawa kolumna warstwy (bez narożników już sprawdzonych)
+            for y in (layer + 1)..(size - 1 - layer) {
+                if let Some(CellState::Alive) = self.get_cell(layer, y) {
+                    return false;
+                }
+                if let Some(CellState::Alive) = self.get_cell(size - 1 - layer, y) {
+                    return false;
                 }
             }
         }
         
-        Some(optimized_board)
+        true
+    }
+    
+    /// Usuwa cały zewnętrzny pierścień z planszy
+    /// 
+    /// Tworzy nową planszę o rozmiarze (size - 2) x (size - 2) i kopiuje
+    /// wszystkie komórki z wewnętrznego obszaru, pomijając zewnętrzny pierścień.
+    fn remove_outer_ring(&self) -> Board {
+        let old_size = self.width(); // Plansza jest kwadratem
+        
+        if old_size <= 2 {
+            // Nie można usunąć pierścienia z planszy 2x2 lub mniejszej
+            return self.clone();
+        }
+        
+        let new_size = old_size - 2;
+        let mut new_board = Board::new(new_size, new_size);
+        
+        // Kopiujemy wewnętrzny obszar (pomijamy zewnętrzny pierścień)
+        for y in 1..(old_size - 1) {
+            for x in 1..(old_size - 1) {
+                if let Some(cell_state) = self.get_cell(x, y) {
+                    // Przesuwamy współrzędne o -1 w obu osiach
+                    new_board.set_cell(x - 1, y - 1, cell_state);
+                }
+            }
+        }
+        
+        new_board
     }
 
     /// Zmienia rozmiar planszy do określonych wymiarów
