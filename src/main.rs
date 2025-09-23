@@ -265,6 +265,9 @@ impl GameOfLifeApp {
         // Aktualizujemy statystyki
         self.side_panel.set_alive_cells_count(self.board.count_alive_cells());
         
+        // Synchronizujemy ustawienia w GUI z konfiguracją po resecie
+        self.side_panel.sync_settings_with_config();
+        
         // Invalidujemy cache przewidywania po resecie
         self.current_prediction = None;
     }
@@ -305,8 +308,11 @@ impl GameOfLifeApp {
             // Aktualizujemy liczbę żywych komórek
             self.side_panel.set_alive_cells_count(self.board.count_alive_cells());
         } else {
-            // Aplikacja była uruchomiona - zmieniamy rozmiar tylko w trybie Static
+            // Aplikacja była uruchomiona - w obu trybach pozwalamy na zmianę rozmiaru
+            // ale w trybie Dynamic nie zmieniamy aktualnej planszy, tylko zapisujemy nowy rozmiar
+            // który zostanie użyty przy następnym resecie
             if config.board_size_mode == config::BoardSizeMode::Static {
+                // W trybie Static zmieniamy rozmiar natychmiast
                 self.board = self.board.resize_to_square(new_size);
                 
                 // Aktualizujemy też zapisany stan przed uruchomieniem jeśli istnieje
@@ -322,7 +328,8 @@ impl GameOfLifeApp {
                 // Aktualizujemy liczbę żywych komórek
                 self.side_panel.set_alive_cells_count(self.board.count_alive_cells());
             }
-            // W trybie Dynamic ignorujemy zmiany rozmiaru gdy aplikacja była uruchomiona
+            // W trybie Dynamic nie zmieniamy aktualnej planszy, ale nowy rozmiar
+            // jest już zapisany w konfiguracji i zostanie użyty przy resecie
         }
         
         // Invalidujemy cache przewidywania

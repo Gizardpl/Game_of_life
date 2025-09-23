@@ -7,6 +7,7 @@ pub mod render;
 pub mod side_panel;
 pub mod preview_render;
 pub mod settings;
+pub mod styles;
 
 // Re-eksportujemy główne typy
 pub use render::{GameRenderer, MouseInteraction};

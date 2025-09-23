@@ -5,7 +5,7 @@
 /// 2. Drugi reset - całkowicie pusta plansza
 
 use super::board::Board;
-use crate::config::{get_config, get_default_initial_state, BoardSizeMode};
+use crate::config::{get_config, BoardSizeMode};
 
 /// Manager odpowiedzialny za logikę resetowania planszy
 pub struct ResetManager {
@@ -43,7 +43,7 @@ impl ResetManager {
     /// Resetuje planszę zgodnie z dwuetapowym systemem
     /// 
     /// Zwraca nową planszę oraz informację czy aplikacja powinna być oznaczona jako "nie uruchomiona"
-    pub fn reset_board(&mut self, current_board: &Board, ever_started: bool) -> (Board, bool) {
+    pub fn reset_board(&mut self, _current_board: &Board, ever_started: bool) -> (Board, bool) {
         // ZAWSZE pobieramy najświeższe ustawienia z konfiguracji
         // aby uwzględnić zmiany dokonane przez użytkownika w GUI
         let config = get_config();

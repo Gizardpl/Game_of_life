@@ -2,8 +2,9 @@
 /// 
 /// Zawiera przyciski Start/Stop, Reset oraz inne opcje sterowania symulacją.
 
-use egui::{Button, RichText, Color32};
+use egui::RichText;
 use super::settings::{SettingsPanel, SettingsAction};
+use super::styles::{UIStyles, ButtonType, TextType, helpers};
 
 /// Stan symulacji
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -47,14 +48,14 @@ pub struct SidePanel {
     alive_cells_count: usize,
     /// Prędkość symulacji (generacje na sekundę)
     simulation_speed: f32,
-    /// Czy pokazywać podgląd następnego stanu (komórki, które się narodzą)
-    show_next_state_preview: bool,
-    /// Czy pokazywać podgląd poprzedniego stanu (komórki, które umrą)
-    show_previous_state_preview: bool,
+    /// Czy pokazywać podgląd zmian (zarówno narodziny jak i śmierci)
+    show_preview: bool,
     /// Czy sekcja instrukcji jest rozwinięta
     instructions_expanded: bool,
     /// Panel ustawień gry
     settings_panel: SettingsPanel,
+    /// Style UI
+    styles: UIStyles,
 }
 
 impl Default for SidePanel {
@@ -65,10 +66,10 @@ impl Default for SidePanel {
             generation_count: 0,
             alive_cells_count: 0,
             simulation_speed: config.ui_config.default_simulation_speed,
-            show_next_state_preview: false,
-            show_previous_state_preview: false,
+            show_preview: false,
             instructions_expanded: false,
             settings_panel: SettingsPanel::new(),
+            styles: UIStyles::new(),
         }
     }
 }
@@ -127,24 +128,24 @@ impl SidePanel {
         1.0 / self.simulation_speed
     }
     
-    /// Ustawia czy pokazywać podgląd następnego stanu
-    pub fn set_show_next_state_preview(&mut self, show: bool) {
-        self.show_next_state_preview = show;
+    /// Ustawia czy pokazywać podgląd zmian
+    pub fn set_show_preview(&mut self, show: bool) {
+        self.show_preview = show;
     }
     
-    /// Zwraca czy pokazywać podgląd następnego stanu
+    /// Zwraca czy pokazywać podgląd zmian
+    pub fn show_preview(&self) -> bool {
+        self.show_preview
+    }
+    
+    /// Zwraca czy pokazywać podgląd następnego stanu (dla kompatybilności wstecznej)
     pub fn show_next_state_preview(&self) -> bool {
-        self.show_next_state_preview
+        self.show_preview
     }
     
-    /// Ustawia czy pokazywać podgląd poprzedniego stanu
-    pub fn set_show_previous_state_preview(&mut self, show: bool) {
-        self.show_previous_state_preview = show;
-    }
-    
-    /// Zwraca czy pokazywać podgląd poprzedniego stanu
+    /// Zwraca czy pokazywać podgląd poprzedniego stanu (dla kompatybilności wstecznej)
     pub fn show_previous_state_preview(&self) -> bool {
-        self.show_previous_state_preview
+        self.show_preview
     }
     
     /// Renderuje panel boczny i zwraca akcję użytkownika
@@ -156,181 +157,216 @@ impl SidePanel {
         egui::ScrollArea::vertical()
             .auto_shrink([false; 2])
             .show(ui, |ui| {
-        ui.vertical(|ui| {
-            // Tytuł
-            ui.heading(RichText::new("Conway's Game of Life").strong());
-            ui.separator();
-            
-            // Sekcja kontroli
-            ui.group(|ui| {
-                ui.label(RichText::new("Controls").strong());
-                
-                // Przycisk Start/Stop
-                let (button_text, button_color) = match self.simulation_state {
-                    SimulationState::Stopped => ("▶ Start", Color32::GREEN),
-                    SimulationState::Running => ("⏸ Stop", Color32::RED),
-                };
-                
-                let start_stop_button = Button::new(
-                    RichText::new(button_text).color(button_color).strong()
-                ).min_size(egui::Vec2::new(
-                    config.ui_config.default_button_size.0,
-                    config.ui_config.default_button_size.1
-                ));
-                
-                if ui.add(start_stop_button).clicked() {
-                    action = match self.simulation_state {
-                        SimulationState::Stopped => UserAction::Start,
-                        SimulationState::Running => UserAction::Stop,
-                    };
-                }
-                
-                // Przycisk Reset
-                let reset_button = Button::new(
-                    RichText::new("🔄 Reset").color(Color32::BLUE).strong()
-                ).min_size(egui::Vec2::new(
-                    config.ui_config.default_button_size.0,
-                    config.ui_config.default_button_size.1
-                ));
-                
-                if ui.add(reset_button).clicked() {
-                    action = UserAction::Reset;
-                }
-                
-                // Przycisk Step (tylko gdy symulacja zatrzymana)
-                if self.simulation_state == SimulationState::Stopped {
-                    let step_button = Button::new(
-                        RichText::new("⏭ Step").color(Color32::GRAY).strong()
-                    ).min_size(egui::Vec2::new(
-                        config.ui_config.default_button_size.0,
-                        config.ui_config.default_button_size.1
-                    ));
+                ui.vertical(|ui| {
+                    // Tytuł aplikacji
+                    ui.add_space(self.styles.dimensions.margin_medium);
+                    ui.label(helpers::section_header("Conway's Game of Life", &self.styles));
+                    ui.add_space(self.styles.separator_spacing());
                     
-                    if ui.add(step_button).clicked() {
-                        action = UserAction::Step;
-                    }
-                }
-            });
-            
-            ui.separator();
-            
-            // Sekcja statystyk
-            ui.group(|ui| {
-                ui.label(RichText::new("Statistics").strong());
-                
-                ui.horizontal(|ui| {
-                    ui.label("Generation:");
-                    ui.label(RichText::new(format!("{}", self.generation_count)).monospace());
-                });
-                
-                ui.horizontal(|ui| {
-                    ui.label("Alive cells:");
-                    ui.label(RichText::new(format!("{}", self.alive_cells_count)).monospace());
-                });
-                
-                ui.horizontal(|ui| {
-                    ui.label("Status:");
-                    let (status_text, status_color) = match self.simulation_state {
-                        SimulationState::Stopped => ("Stopped", Color32::RED),
-                        SimulationState::Running => ("Running", Color32::GREEN),
-                    };
-                    ui.label(RichText::new(status_text).color(status_color).strong());
-                });
-            });
-            
-            ui.separator();
-            
-            // Sekcja ustawień
-            ui.group(|ui| {
-                ui.label(RichText::new("Settings").strong());
-                
-                ui.horizontal(|ui| {
-                    ui.label("Speed:");
-                    if ui.add(egui::Slider::new(
-                        &mut self.simulation_speed, 
-                        config.ui_config.min_simulation_speed..=config.ui_config.max_simulation_speed
-                    ).step_by(config.ui_config.simulation_speed_step as f64)
-                     .text("gen/s")).changed() {
-                        // Prędkość została zmieniona
-                    }
-                });
-                
-                ui.horizontal(|ui| {
-                    ui.label("Interval:");
-                    ui.label(RichText::new(format!("{:.1}ms", 
-                        self.time_between_generations() * 1000.0)).monospace());
-                });
-            });
-            
-            ui.separator();
-            
-            // Sekcja podglądu
-            ui.group(|ui| {
-                ui.label(RichText::new("Preview Options").strong());
-                
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut self.show_next_state_preview, "Show next state");
-                    ui.colored_label(Color32::from_rgba_unmultiplied(0, 200, 0, 255), "(green)");
-                    if ui.small_button("?").on_hover_text("Show cells that will be born in the next generation with light green highlight").clicked() {
-                        // Tooltip jest już wyświetlany przez on_hover_text
-                    }
-                });
-                
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut self.show_previous_state_preview, "Show deaths");
-                    ui.colored_label(Color32::from_rgba_unmultiplied(200, 0, 0, 255), "(red)");
-                    if ui.small_button("?").on_hover_text("Show cells that will die in the next generation with light red highlight").clicked() {
-                        // Tooltip jest już wyświetlany przez on_hover_text
-                    }
-                });
-            });
-            
-            ui.separator();
-            
-            // Sekcja ustawień gry
-            let settings_action = self.settings_panel.render(ui);
-            match settings_action {
-                SettingsAction::RulesChanged => action = UserAction::RulesChanged,
-                SettingsAction::BoardSettingsChanged => action = UserAction::BoardSettingsChanged,
-                SettingsAction::BoardSizeChanged(size) => action = UserAction::BoardSizeChanged(size),
-                SettingsAction::ResetRules => action = UserAction::RulesChanged,
-                SettingsAction::ResetBoardSettings => action = UserAction::BoardSettingsChanged,
-                SettingsAction::None => {}
-            }
-            
-            ui.separator();
-            
-            // Sekcja informacji (zwijalna)
-            ui.group(|ui| {
-                ui.horizontal(|ui| {
-                    let instructions_text = if self.instructions_expanded {
-                        "▼ Instructions & Editing"
-                    } else {
-                        "▶ Instructions & Editing"
-                    };
+                    // Sekcja kontroli z prędkością
+                    self.styles.group_style().show(ui, |ui| {
+                        ui.label(helpers::section_header("Controls", &self.styles));
+                        ui.add_space(self.styles.dimensions.margin_small);
+                        
+                        // Przyciski kontroli w jednym rzędzie
+                        ui.horizontal(|ui| {
+                            // Przycisk Start/Stop
+                            let (button_text, button_color) = match self.simulation_state {
+                                SimulationState::Stopped => ("▶ Start", self.styles.colors.button_start),
+                                SimulationState::Running => ("⏸ Stop", self.styles.colors.button_stop),
+                            };
+                            
+                            if ui.add(helpers::styled_button(button_text, button_color, &self.styles, ButtonType::Medium)).clicked() {
+                                action = match self.simulation_state {
+                                    SimulationState::Stopped => UserAction::Start,
+                                    SimulationState::Running => UserAction::Stop,
+                                };
+                            }
+                            
+                            // Przycisk Reset
+                            if ui.add(helpers::styled_button("🔄 Reset", self.styles.colors.button_reset, &self.styles, ButtonType::Medium)).clicked() {
+                                action = UserAction::Reset;
+                            }
+                            
+                            // Przycisk Step (tylko gdy symulacja zatrzymana)
+                            if self.simulation_state == SimulationState::Stopped {
+                                if ui.add(helpers::styled_button("⏭ Step", self.styles.colors.button_step, &self.styles, ButtonType::Medium)).clicked() {
+                                    action = UserAction::Step;
+                                }
+                            }
+                        });
+                        
+                        ui.add_space(self.styles.dimensions.margin_medium);
+                        
+                        // Ustawienia prędkości w tej samej sekcji
+                        ui.add_space(self.styles.dimensions.margin_medium);
+                        
+                        // Kontener dla kontroli prędkości z lepszym layoutem
+                        ui.vertical(|ui| {
+                            ui.label(helpers::subsection_header("Speed", &self.styles));
+                            ui.add_space(self.styles.dimensions.margin_small);
+                            
+                            ui.horizontal(|ui| {
+                                // Przycisk zmniejszenia prędkości
+                                let can_decrease = self.simulation_speed > config.ui_config.min_simulation_speed;
+                                if ui.add(helpers::arrow_button("◀", can_decrease, &self.styles)).clicked() && can_decrease {
+                                    self.simulation_speed = (self.simulation_speed - config.ui_config.simulation_speed_step)
+                                        .max(config.ui_config.min_simulation_speed);
+                                }
+                                
+                                // Slider prędkości - wydłużony, zajmuje dostępną przestrzeń
+                                ui.allocate_ui_with_layout(
+                                    egui::Vec2::new(ui.available_width() - 80.0, self.styles.dimensions.slider_height),
+                                    egui::Layout::left_to_right(egui::Align::Center),
+                                    |ui| {
+                                        if ui.add(helpers::wide_slider(
+                                            &mut self.simulation_speed, 
+                                            config.ui_config.min_simulation_speed..=config.ui_config.max_simulation_speed,
+                                            "gen/s",
+                                            &self.styles
+                                        ).step_by(config.ui_config.simulation_speed_step as f64)).changed() {
+                                            // Prędkość została zmieniona
+                                        }
+                                    }
+                                );
+                                
+                                // Przycisk zwiększenia prędkości
+                                let can_increase = self.simulation_speed < config.ui_config.max_simulation_speed;
+                                if ui.add(helpers::arrow_button("▶", can_increase, &self.styles)).clicked() && can_increase {
+                                    self.simulation_speed = (self.simulation_speed + config.ui_config.simulation_speed_step)
+                                        .min(config.ui_config.max_simulation_speed);
+                                }
+                            });
+                        });
+                    });
                     
-                    if ui.button(RichText::new(instructions_text).strong()).clicked() {
-                        self.instructions_expanded = !self.instructions_expanded;
+                    ui.add_space(self.styles.separator_spacing());
+                    
+                    // Sekcja statystyk z podglądem
+                    self.styles.group_style().show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            // Statystyki po lewej
+                            ui.vertical(|ui| {
+                                ui.label(helpers::section_header("Statistics", &self.styles));
+                                ui.add_space(self.styles.dimensions.margin_small);
+                                
+                                ui.horizontal(|ui| {
+                                    ui.label(helpers::label_text("Generation:", &self.styles));
+                                    ui.label(helpers::value_text(&format!("{}", self.generation_count), &self.styles));
+                                });
+                                
+                                ui.horizontal(|ui| {
+                                    ui.label(helpers::label_text("Alive cells:", &self.styles));
+                                    ui.label(helpers::value_text(&format!("{}", self.alive_cells_count), &self.styles));
+                                });
+                                
+                                ui.horizontal(|ui| {
+                                    ui.label(helpers::label_text("Status:", &self.styles));
+                                    let (status_text, status_color) = match self.simulation_state {
+                                        SimulationState::Stopped => ("Stopped", self.styles.colors.error),
+                                        SimulationState::Running => ("Running", self.styles.colors.success),
+                                    };
+                                    ui.label(RichText::new(status_text)
+                                        .font(self.styles.font_id(TextType::Medium))
+                                        .color(status_color)
+                                        .strong());
+                                });
+                            });
+                            
+                            ui.separator();
+                            
+                            // Preview Options po prawej - wyłączone gdy gra jest uruchomiona
+                            ui.vertical(|ui| {
+                                let is_running = self.simulation_state == SimulationState::Running;
+                                let header_color = if is_running { self.styles.colors.text_disabled } else { self.styles.colors.text_primary };
+                                
+                                ui.label(RichText::new("Preview Options")
+                                    .font(self.styles.font_id(TextType::Large))
+                                    .color(header_color)
+                                    .strong());
+                                ui.add_space(self.styles.dimensions.margin_small);
+                                
+                                ui.add_enabled_ui(!is_running, |ui| {
+                                    ui.horizontal(|ui| {
+                                        helpers::styled_checkbox(ui, &mut self.show_preview, "Show changes", &self.styles);
+                                        if ui.small_button("?").on_hover_text("Show cells that will be born (green) and die (red) in the next generation").clicked() {
+                                            // Tooltip jest już wyświetlany przez on_hover_text
+                                        }
+                                    });
+                                });
+                                
+                                // Pokazuj Birth/Deaths tylko gdy gra jest zatrzymana I show_preview jest zaznaczone
+                                if self.show_preview && !is_running {
+                                    ui.horizontal(|ui| {
+                                        ui.colored_label(self.styles.colors.preview_birth, "● Births");
+                                        ui.colored_label(self.styles.colors.preview_death, "● Deaths");
+                                    });
+                                }
+                                // Gdy gra jest uruchomiona, nie pokazujemy wcale Birth/Deaths
+                            });
+                        });
+                    });
+                    
+                    ui.add_space(self.styles.separator_spacing());
+                    
+                    // Sekcja ustawień gry ze stylizowanymi zagnieżdżeniami
+                    let settings_action = self.render_styled_settings(ui);
+                    match settings_action {
+                        SettingsAction::RulesChanged => action = UserAction::RulesChanged,
+                        SettingsAction::BoardSettingsChanged => action = UserAction::BoardSettingsChanged,
+                        SettingsAction::BoardSizeChanged(size) => action = UserAction::BoardSizeChanged(size),
+                        SettingsAction::ResetRules => action = UserAction::RulesChanged,
+                        SettingsAction::ResetBoardSettings => action = UserAction::BoardSettingsChanged,
+                        SettingsAction::None => {}
                     }
+                    
+                    ui.add_space(self.styles.separator_spacing());
+                    
+                    // Sekcja informacji (zwijalna)
+                    self.styles.group_style().show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            let instructions_text = if self.instructions_expanded {
+                                "🔽 Instructions & Editing"
+                            } else {
+                                "▶ Instructions & Editing"
+                            };
+                            
+                            if ui.add(helpers::styled_button(instructions_text, self.styles.colors.text_primary, &self.styles, ButtonType::Large)).clicked() {
+                                self.instructions_expanded = !self.instructions_expanded;
+                            }
+                        });
+                        
+                        if self.instructions_expanded {
+                            ui.add_space(self.styles.dimensions.margin_medium);
+                            
+                            ui.label(helpers::subsection_header("Controls:", &self.styles));
+                            ui.label(helpers::label_text("• Click Start to begin simulation", &self.styles));
+                            ui.label(helpers::label_text("• Use Reset to restore initial state", &self.styles));
+                            ui.label(helpers::label_text("• Step executes one generation", &self.styles));
+                            ui.label(helpers::label_text("• Adjust speed with the slider", &self.styles));
+                            
+                            ui.add_space(self.styles.dimensions.margin_small);
+                            
+                            ui.label(helpers::subsection_header("Editing:", &self.styles));
+                            ui.label(helpers::label_text("• Click cells when stopped to edit", &self.styles));
+                            ui.label(helpers::label_text("• Toggle cells between alive/dead", &self.styles));
+                            ui.label(helpers::label_text("• Changes persist in next generations", &self.styles));
+                        }
+                    });
                 });
-                
-                if self.instructions_expanded {
-                    ui.separator();
-                    ui.label(RichText::new("Controls:").strong());
-                    ui.label("• Click Start to begin simulation");
-                    ui.label("• Use Reset to restore initial state");
-                    ui.label("• Step executes one generation");
-                    ui.label("• Adjust speed with the slider");
-                    ui.separator();
-                    ui.label(RichText::new("Editing:").strong());
-                    ui.label("• Click cells when stopped to edit");
-                    ui.label("• Toggle cells between alive/dead");
-                    ui.label("• Changes persist in next generations");
-                }
             });
-        });
-        });
         
         action
+    }
+    
+    /// Renderuje stylizowaną sekcję ustawień gry
+    fn render_styled_settings(&mut self, ui: &mut egui::Ui) -> SettingsAction {
+        // Delegujemy do settings_panel, ale z naszymi stylami
+        self.settings_panel.render_with_styles(ui, &self.styles)
+    }
+    
+    /// Synchronizuje ustawienia z konfiguracją
+    pub fn sync_settings_with_config(&mut self) {
+        self.settings_panel.sync_with_config();
     }
 }
