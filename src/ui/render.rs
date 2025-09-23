@@ -66,13 +66,13 @@ impl GameRenderer {
         }
     }
     
-    /// Renderuje planszę w podanym obszarze
+    /// Renderuje planszę w podanym obszarze i zwraca opcjonalne współrzędne klikniętej komórki
     pub fn render_board(
         &mut self,
         ui: &mut egui::Ui,
         board: &Board,
         available_rect: Rect,
-    ) {
+    ) -> Option<(usize, usize)> {
         // Obliczamy optymalny rozmiar komórki na podstawie wysokości
         let optimal_cell_size = self.calculate_optimal_cell_size(board, available_rect.height());
         self.set_cell_size(optimal_cell_size);
@@ -99,6 +99,19 @@ impl GameRenderer {
         
         // Renderujemy planszę
         self.render_board_in_rect(ui, board, final_board_rect);
+        
+        // Sprawdzamy czy użytkownik kliknął na planszę
+        let clicked_cell = if ui.input(|i| i.pointer.any_click()) {
+            if let Some(pointer_pos) = ui.input(|i| i.pointer.interact_pos()) {
+                self.screen_to_cell_coords(final_board_rect, pointer_pos)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        
+        clicked_cell
     }
     
     /// Renderuje planszę w określonym prostokącie

@@ -24,6 +24,8 @@ pub enum UserAction {
     Reset,
     /// Wykonaj jeden krok symulacji
     Step,
+    /// Edytuj komórkę na podanych współrzędnych (x, y)
+    EditCell(usize, usize),
     /// Brak akcji
     None,
 }
@@ -226,6 +228,11 @@ impl SidePanel {
                 ui.label("• Use Reset to restore initial state");
                 ui.label("• Step executes one generation");
                 ui.label("• Adjust speed with the slider");
+                ui.separator();
+                ui.label(RichText::new("Editing:").strong());
+                ui.label("• Click cells when stopped to edit");
+                ui.label("• Toggle cells between alive/dead");
+                ui.label("• Changes persist in next generations");
             });
         });
         
