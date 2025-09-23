@@ -333,4 +333,11 @@ pub mod helpers {
             .font(styles.font_id(TextType::Medium))
             .color(styles.colors.text_secondary))
     }
+    
+    /// Tworzy mały tekst
+    pub fn small_text(text: &str, styles: &UIStyles) -> RichText {
+        RichText::new(text)
+            .font(styles.font_id(TextType::Small))
+            .color(styles.colors.text_secondary)
+    }
 }

@@ -5,6 +5,7 @@
 use egui::RichText;
 use super::settings::{SettingsPanel, SettingsAction};
 use super::styles::{UIStyles, ButtonType, TextType, helpers};
+use super::pattern_selector::PatternSelector;
 
 /// Stan symulacji
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -16,7 +17,7 @@ pub enum SimulationState {
 }
 
 /// Akcje które może wykonać użytkownik
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum UserAction {
     /// Uruchom symulację
     Start,
@@ -36,6 +37,12 @@ pub enum UserAction {
     BoardSizeChanged(usize),
     /// Wygeneruj losową planszę
     RandomFill,
+    /// Wybrano wzór do umieszczenia
+    PatternSelected(String),
+    /// Anulowano wybór wzoru
+    PatternCancelled,
+    /// Umieść wzór w podanej pozycji
+    PlacePattern(String, usize, usize),
     /// Brak akcji
     None,
 }
@@ -58,6 +65,10 @@ pub struct SidePanel {
     settings_panel: SettingsPanel,
     /// Style UI
     styles: UIStyles,
+    /// Aktualnie wybrany wzór do umieszczenia
+    selected_pattern: Option<String>,
+    /// Selektor wzorów
+    pattern_selector: PatternSelector,
 }
 
 impl Default for SidePanel {
@@ -72,6 +83,8 @@ impl Default for SidePanel {
             instructions_expanded: false,
             settings_panel: SettingsPanel::new(),
             styles: UIStyles::new(),
+            selected_pattern: None,
+            pattern_selector: PatternSelector::new(),
         }
     }
 }
@@ -334,9 +347,36 @@ impl SidePanel {
                     
                     ui.add_space(self.styles.separator_spacing());
                     
-                    // Sekcja informacji (zwijalna)
-                    self.styles.group_style().show(ui, |ui| {
-                        ui.horizontal(|ui| {
+                    // Sekcja wzorów predefiniowanych
+                    if let Some(selected_pattern_name) = self.pattern_selector.render(ui, self.simulation_state == SimulationState::Stopped) {
+                        if self.selected_pattern.as_ref() == Some(&selected_pattern_name) {
+                            // Kliknięto ten sam wzór - anuluj wybór
+                            action = UserAction::PatternCancelled;
+                        } else {
+                            // Wybrano nowy wzór
+                            action = UserAction::PatternSelected(selected_pattern_name);
+                        }
+                    }
+                    
+                    // Jeśli jakiś wzór jest wybrany, pokaż informację
+                    if let Some(pattern_name) = &self.selected_pattern {
+                        ui.add_space(self.styles.dimensions.margin_small);
+                        ui.group(|ui| {
+                            ui.label(helpers::subsection_header(&format!("Selected: {}", pattern_name), &self.styles));
+                            ui.label(helpers::small_text("Click on board to place pattern", &self.styles));
+                            ui.horizontal(|ui| {
+                                if ui.add(helpers::styled_button("Cancel", self.styles.colors.button_reset, &self.styles, ButtonType::Small)).clicked() {
+                                    action = UserAction::PatternCancelled;
+                                }
+                            });
+                        });
+                    }
+                    
+                    ui.add_space(self.styles.separator_spacing());
+                    
+                    // Instrukcje i edycja
+                    ui.group(|ui| {
+                        ui.vertical(|ui| {
                             let instructions_text = if self.instructions_expanded {
                                 "🔽 Instructions & Editing"
                             } else {
@@ -380,5 +420,25 @@ impl SidePanel {
     /// Synchronizuje ustawienia z konfiguracją
     pub fn sync_settings_with_config(&mut self) {
         self.settings_panel.sync_with_config();
+    }
+    
+    /// Ustawia wybrany wzór
+    pub fn set_selected_pattern(&mut self, pattern_name: Option<String>) {
+        self.selected_pattern = pattern_name;
+    }
+    
+    /// Zwraca aktualnie wybrany wzór
+    pub fn selected_pattern(&self) -> Option<&String> {
+        self.selected_pattern.as_ref()
+    }
+    
+    /// Sprawdza czy jakiś wzór jest wybrany
+    pub fn has_selected_pattern(&self) -> bool {
+        self.selected_pattern.is_some()
+    }
+    
+    /// Zwraca wzór o podanej nazwie
+    pub fn get_pattern(&self, name: &str) -> Option<&crate::assets::Pattern> {
+        self.pattern_selector.get_pattern(name)
     }
 }

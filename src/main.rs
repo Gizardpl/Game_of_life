@@ -1,9 +1,10 @@
 mod config;
 mod logic;
 mod ui;
+mod assets;
 
 use config::{init_config, get_default_initial_state};
-use logic::board::{Board};
+use logic::board::{Board, CellState};
 use logic::change_state::CellStateManager;
 use logic::prediction::{predict_next_state, PredictionResult};
 use logic::reset::ResetManager;
@@ -109,14 +110,22 @@ impl eframe::App for GameOfLifeApp {
                         // Aktualizujemy przewidywanie jeśli potrzeba
                         self.update_prediction_if_needed();
                         
+                        // Pobieramy wzór do podglądu jeśli jest wybrany
+                        let pattern_preview = if let Some(pattern_name) = self.side_panel.selected_pattern() {
+                            self.side_panel.get_pattern(pattern_name)
+                        } else {
+                            None
+                        };
+                        
                         // Renderujemy planszę z podglądem
-                        let mouse_interaction = self.renderer.render_board_with_preview(
+                        let mouse_interaction = self.renderer.render_board_with_pattern_preview(
                             ui, 
                             &self.board, 
                             board_rect,
                             self.current_prediction.as_ref(),
                             self.side_panel.show_next_state_preview(),
-                            self.side_panel.show_previous_state_preview()
+                            self.side_panel.show_previous_state_preview(),
+                            pattern_preview
                         );
                         
                         // Obsługujemy interakcje myszy tylko gdy symulacja zatrzymana
@@ -186,6 +195,20 @@ impl GameOfLifeApp {
                     self.generate_random_board();
                 }
             }
+            UserAction::PatternSelected(pattern_name) => {
+                // Wybrano wzór do umieszczenia
+                self.side_panel.set_selected_pattern(Some(pattern_name));
+            }
+            UserAction::PatternCancelled => {
+                // Anulowano wybór wzoru
+                self.side_panel.set_selected_pattern(None);
+            }
+            UserAction::PlacePattern(pattern_name, x, y) => {
+                // Umieść wzór na planszy
+                if self.side_panel.simulation_state() == SimulationState::Stopped {
+                    self.place_pattern_on_board(&pattern_name, x, y);
+                }
+            }
             UserAction::None => {
                 // Brak akcji
             }
@@ -196,6 +219,21 @@ impl GameOfLifeApp {
     fn handle_mouse_interaction(&mut self, interaction: MouseInteraction) {
         let mut board_changed = false;
         
+        // Sprawdzamy czy mamy wybrany wzór do umieszczenia
+        if let Some(pattern_name) = self.side_panel.selected_pattern().cloned() {
+            // Tryb umieszczania wzoru
+            if let Some((x, y)) = interaction.clicked_cell {
+                // Kliknięto - umieść wzór
+                self.place_pattern_on_board(&pattern_name, x, y);
+                // Anuluj wybór wzoru po umieszczeniu
+                self.side_panel.set_selected_pattern(None);
+                return; // Nie obsługujemy normalnej edycji komórek
+            }
+            // W trybie umieszczania wzoru nie obsługujemy normalnej edycji
+            return;
+        }
+        
+        // Normalna obsługa edycji komórek (gdy nie ma wybranego wzoru)
         // Obsługa kliknięcia (bez przeciągania)
         if let Some((x, y)) = interaction.clicked_cell {
             if !self.cell_state_manager.is_dragging() {
@@ -390,6 +428,56 @@ impl GameOfLifeApp {
         if self.ever_started {
             self.reset_manager.clear_pre_start_state();
             self.reset_manager.save_pre_start_state(&self.board);
+        }
+    }
+    
+    /// Umieszcza wzór na planszy w podanej pozycji
+    fn place_pattern_on_board(&mut self, pattern_name: &str, center_x: usize, center_y: usize) {
+        if let Some(pattern) = self.side_panel.get_pattern(pattern_name) {
+            let center_pos = assets::Position::new(center_x as i32, center_y as i32);
+            
+            // Pobieramy obszar do wyczyszczenia i komórki wzoru
+            let clear_area = pattern.get_clear_area(center_pos);
+            let pattern_cells = pattern.get_cells_at_center(center_pos);
+            
+            // Najpierw czyścimy obszar wzoru
+            for pos in clear_area {
+                if pos.x >= 0 && pos.y >= 0 {
+                    let x = pos.x as usize;
+                    let y = pos.y as usize;
+                    
+                    // Sprawdzamy czy pozycja jest w granicach planszy
+                    if x < self.board.width() && y < self.board.height() {
+                        self.board.set_cell(x, y, CellState::Dead);
+                    }
+                }
+            }
+            
+            // Następnie ustawiamy komórki wzoru
+            for pos in pattern_cells {
+                if pos.x >= 0 && pos.y >= 0 {
+                    let x = pos.x as usize;
+                    let y = pos.y as usize;
+                    
+                    // Sprawdzamy czy pozycja jest w granicach planszy
+                    if x < self.board.width() && y < self.board.height() {
+                        self.board.set_cell(x, y, CellState::Alive);
+                    }
+                }
+            }
+            
+            // Aktualizujemy statystyki
+            self.side_panel.set_alive_cells_count(self.board.count_alive_cells());
+            
+            // Invalidujemy cache przewidywania
+            self.current_prediction = None;
+            
+            // Zapisujemy nowy stan jako stan początkowy do resetowania
+            // (jeśli gra była już kiedyś uruchomiona)
+            if self.ever_started {
+                self.reset_manager.clear_pre_start_state();
+                self.reset_manager.save_pre_start_state(&self.board);
+            }
         }
     }
 }

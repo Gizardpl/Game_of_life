@@ -6,6 +6,7 @@
 use egui::{Color32, Pos2, Rect, Stroke, Vec2};
 use crate::logic::board::{Board, CellState};
 use crate::logic::prediction::PredictionResult;
+use crate::assets::Pattern;
 use super::preview_render::PreviewRenderer;
 
 /// Informacje o interakcji myszy z planszą
@@ -106,6 +107,22 @@ impl GameRenderer {
         show_births: bool,
         show_deaths: bool,
     ) -> MouseInteraction {
+        self.render_board_with_pattern_preview(
+            ui, board, available_rect, prediction, show_births, show_deaths, None
+        )
+    }
+    
+    /// Renderuje planszę z podglądem wzoru do umieszczenia
+    pub fn render_board_with_pattern_preview(
+        &mut self,
+        ui: &mut egui::Ui,
+        board: &Board,
+        available_rect: Rect,
+        prediction: Option<&PredictionResult>,
+        show_births: bool,
+        show_deaths: bool,
+        pattern_preview: Option<&Pattern>,
+    ) -> MouseInteraction {
         // Obliczamy optymalny rozmiar komórki na podstawie wysokości
         let optimal_cell_size = self.calculate_optimal_cell_size(board, available_rect.height());
         self.set_cell_size(optimal_cell_size);
@@ -130,10 +147,23 @@ impl GameRenderer {
             board_rect
         };
         
+        // Sprawdzamy interakcje myszy PRZED renderowaniem, żeby móc użyć hover do podglądu wzoru
+        let pointer_pos = ui.input(|i| i.pointer.interact_pos());
+        let hovered_cell = if let Some(pos) = pointer_pos {
+            self.screen_to_cell_coords(final_board_rect, pos)
+        } else {
+            None
+        };
+        
         // Renderujemy planszę
         self.render_board_in_rect(ui, board, final_board_rect);
         
-        // Renderujemy podgląd jeśli jest dostępny
+        // Renderujemy podgląd wzoru jeśli jest wybrany i myszka jest nad planszą
+        if let (Some(pattern), Some((hover_x, hover_y))) = (pattern_preview, hovered_cell) {
+            self.render_pattern_hover_preview(ui, pattern, final_board_rect, hover_x, hover_y);
+        }
+        
+        // Renderujemy podgląd następnego stanu jeśli jest dostępny
         if let Some(prediction) = prediction {
             self.preview_renderer.render_preview_highlights(
                 ui, 
@@ -144,14 +174,6 @@ impl GameRenderer {
                 show_deaths
             );
         }
-        
-        // Sprawdzamy interakcje myszy
-        let pointer_pos = ui.input(|i| i.pointer.interact_pos());
-        let hovered_cell = if let Some(pos) = pointer_pos {
-            self.screen_to_cell_coords(final_board_rect, pos)
-        } else {
-            None
-        };
         
         let clicked_cell = if ui.input(|i| i.pointer.any_click()) {
             hovered_cell
@@ -169,6 +191,54 @@ impl GameRenderer {
             is_mouse_down,
             mouse_pressed,
             mouse_released,
+        }
+    }
+    
+    /// Renderuje podgląd wzoru pod kursorem myszy
+    fn render_pattern_hover_preview(
+        &self,
+        ui: &mut egui::Ui,
+        pattern: &Pattern,
+        board_rect: Rect,
+        hover_x: usize,
+        hover_y: usize,
+    ) {
+        let painter = ui.painter();
+        let center_pos = crate::assets::Position::new(hover_x as i32, hover_y as i32);
+        
+        // Podświetlamy centrum wzoru (żółty)
+        let center_cell_rect = self.get_cell_rect(board_rect, hover_x, hover_y);
+        painter.rect_filled(center_cell_rect, 0.0, Color32::YELLOW);
+        
+        // Renderujemy podgląd wzoru (półprzezroczyste komórki)
+        let pattern_cells = pattern.get_cells_at_center(center_pos);
+        for pos in pattern_cells {
+            if pos.x >= 0 && pos.y >= 0 {
+                let x = pos.x as usize;
+                let y = pos.y as usize;
+                
+                let cell_rect = self.get_cell_rect(board_rect, x, y);
+                // Sprawdzamy czy komórka jest w granicach planszy
+                if board_rect.contains(cell_rect.center()) {
+                    painter.rect_filled(cell_rect, 0.0, Color32::from_rgba_unmultiplied(0, 255, 0, 100));
+                }
+            }
+        }
+        
+        // Renderujemy obszar, który zostanie wyczyszczony (półprzezroczyste czerwone)
+        let clear_area = pattern.get_clear_area(center_pos);
+        for pos in clear_area {
+            if pos.x >= 0 && pos.y >= 0 {
+                let x = pos.x as usize;
+                let y = pos.y as usize;
+                
+                let cell_rect = self.get_cell_rect(board_rect, x, y);
+                // Sprawdzamy czy komórka jest w granicach planszy
+                if board_rect.contains(cell_rect.center()) {
+                    let stroke = Stroke::new(1.0, Color32::from_rgba_unmultiplied(255, 0, 0, 150));
+                    painter.rect_stroke(cell_rect, 0.0, stroke, egui::StrokeKind::Inside);
+                }
+            }
         }
     }
     
