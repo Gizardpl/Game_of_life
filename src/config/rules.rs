@@ -78,7 +78,7 @@ impl Default for UIConfig {
         Self {
             default_simulation_speed: 2.0,
             min_simulation_speed: 0.5,
-            max_simulation_speed: 50.0,
+            max_simulation_speed: 30.0,
             simulation_speed_step: 0.5,
             default_button_size: (100.0, 30.0),
             window_config: WindowConfig::default(),

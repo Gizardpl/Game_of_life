@@ -40,6 +40,12 @@ pub struct SidePanel {
     alive_cells_count: usize,
     /// Prędkość symulacji (generacje na sekundę)
     simulation_speed: f32,
+    /// Czy pokazywać podgląd następnego stanu (komórki, które się narodzą)
+    show_next_state_preview: bool,
+    /// Czy pokazywać podgląd poprzedniego stanu (komórki, które umrą)
+    show_previous_state_preview: bool,
+    /// Czy sekcja instrukcji jest rozwinięta
+    instructions_expanded: bool,
 }
 
 impl Default for SidePanel {
@@ -50,6 +56,9 @@ impl Default for SidePanel {
             generation_count: 0,
             alive_cells_count: 0,
             simulation_speed: config.ui_config.default_simulation_speed,
+            show_next_state_preview: false,
+            show_previous_state_preview: false,
+            instructions_expanded: false,
         }
     }
 }
@@ -108,11 +117,35 @@ impl SidePanel {
         1.0 / self.simulation_speed
     }
     
+    /// Ustawia czy pokazywać podgląd następnego stanu
+    pub fn set_show_next_state_preview(&mut self, show: bool) {
+        self.show_next_state_preview = show;
+    }
+    
+    /// Zwraca czy pokazywać podgląd następnego stanu
+    pub fn show_next_state_preview(&self) -> bool {
+        self.show_next_state_preview
+    }
+    
+    /// Ustawia czy pokazywać podgląd poprzedniego stanu
+    pub fn set_show_previous_state_preview(&mut self, show: bool) {
+        self.show_previous_state_preview = show;
+    }
+    
+    /// Zwraca czy pokazywać podgląd poprzedniego stanu
+    pub fn show_previous_state_preview(&self) -> bool {
+        self.show_previous_state_preview
+    }
+    
     /// Renderuje panel boczny i zwraca akcję użytkownika
     pub fn render(&mut self, ui: &mut egui::Ui) -> UserAction {
         let mut action = UserAction::None;
         let config = crate::config::get_config();
         
+        // Dodajemy scroll area do całego panelu
+        egui::ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
         ui.vertical(|ui| {
             // Tytuł
             ui.heading(RichText::new("Conway's Game of Life").strong());
@@ -221,19 +254,58 @@ impl SidePanel {
             
             ui.separator();
             
-            // Sekcja informacji
+            // Sekcja podglądu
             ui.group(|ui| {
-                ui.label(RichText::new("Instructions").strong());
-                ui.label("• Click Start to begin simulation");
-                ui.label("• Use Reset to restore initial state");
-                ui.label("• Step executes one generation");
-                ui.label("• Adjust speed with the slider");
-                ui.separator();
-                ui.label(RichText::new("Editing:").strong());
-                ui.label("• Click cells when stopped to edit");
-                ui.label("• Toggle cells between alive/dead");
-                ui.label("• Changes persist in next generations");
+                ui.label(RichText::new("Preview Options").strong());
+                
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut self.show_next_state_preview, "Show next state");
+                    ui.colored_label(Color32::from_rgba_unmultiplied(0, 200, 0, 255), "(green)");
+                    if ui.small_button("?").on_hover_text("Show cells that will be born in the next generation with light green highlight").clicked() {
+                        // Tooltip jest już wyświetlany przez on_hover_text
+                    }
+                });
+                
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut self.show_previous_state_preview, "Show deaths");
+                    ui.colored_label(Color32::from_rgba_unmultiplied(200, 0, 0, 255), "(red)");
+                    if ui.small_button("?").on_hover_text("Show cells that will die in the next generation with light red highlight").clicked() {
+                        // Tooltip jest już wyświetlany przez on_hover_text
+                    }
+                });
             });
+            
+            ui.separator();
+            
+            // Sekcja informacji (zwijalna)
+            ui.group(|ui| {
+                ui.horizontal(|ui| {
+                    let instructions_text = if self.instructions_expanded {
+                        "▼ Instructions & Editing"
+                    } else {
+                        "▶ Instructions & Editing"
+                    };
+                    
+                    if ui.button(RichText::new(instructions_text).strong()).clicked() {
+                        self.instructions_expanded = !self.instructions_expanded;
+                    }
+                });
+                
+                if self.instructions_expanded {
+                    ui.separator();
+                    ui.label(RichText::new("Controls:").strong());
+                    ui.label("• Click Start to begin simulation");
+                    ui.label("• Use Reset to restore initial state");
+                    ui.label("• Step executes one generation");
+                    ui.label("• Adjust speed with the slider");
+                    ui.separator();
+                    ui.label(RichText::new("Editing:").strong());
+                    ui.label("• Click cells when stopped to edit");
+                    ui.label("• Toggle cells between alive/dead");
+                    ui.label("• Changes persist in next generations");
+                }
+            });
+        });
         });
         
         action

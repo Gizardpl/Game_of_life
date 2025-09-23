@@ -5,6 +5,7 @@ mod ui;
 use config::{init_config, get_default_initial_state};
 use logic::board::Board;
 use logic::change_state::CellStateManager;
+use logic::prediction::{predict_next_state, PredictionResult};
 use ui::{GameRenderer, SidePanel, MouseInteraction};
 use ui::side_panel::{SimulationState, UserAction};
 
@@ -25,6 +26,8 @@ struct GameOfLifeApp {
     cell_state_manager: CellStateManager,
     /// Czas ostatniej aktualizacji
     last_update: Instant,
+    /// Przewidywanie następnego stanu (cache)
+    current_prediction: Option<PredictionResult>,
 }
 
 impl Default for GameOfLifeApp {
@@ -47,6 +50,7 @@ impl Default for GameOfLifeApp {
             side_panel,
             cell_state_manager: CellStateManager::new(),
             last_update: Instant::now(),
+            current_prediction: None,
         }
     }
 }
@@ -93,7 +97,19 @@ impl eframe::App for GameOfLifeApp {
                     egui::Layout::top_down(egui::Align::LEFT),
                     |ui| {
                         let board_rect = ui.available_rect_before_wrap();
-                        let mouse_interaction = self.renderer.render_board(ui, &self.board, board_rect);
+                        
+                        // Aktualizujemy przewidywanie jeśli potrzeba
+                        self.update_prediction_if_needed();
+                        
+                        // Renderujemy planszę z podglądem
+                        let mouse_interaction = self.renderer.render_board_with_preview(
+                            ui, 
+                            &self.board, 
+                            board_rect,
+                            self.current_prediction.as_ref(),
+                            self.side_panel.show_next_state_preview(),
+                            self.side_panel.show_previous_state_preview()
+                        );
                         
                         // Obsługujemy interakcje myszy tylko gdy symulacja zatrzymana
                         if self.side_panel.simulation_state() == SimulationState::Stopped {
@@ -131,6 +147,8 @@ impl GameOfLifeApp {
                     if self.cell_state_manager.handle_cell_click(&mut self.board, x, y) {
                         // Aktualizujemy liczbę żywych komórek po zmianie
                         self.side_panel.set_alive_cells_count(self.board.count_alive_cells());
+                        // Invalidujemy cache przewidywania po zmianie
+                        self.current_prediction = None;
                     }
                 }
             }
@@ -175,6 +193,8 @@ impl GameOfLifeApp {
         // Aktualizujemy liczbę żywych komórek jeśli plansza się zmieniła
         if board_changed {
             self.side_panel.set_alive_cells_count(self.board.count_alive_cells());
+            // Invalidujemy cache przewidywania po zmianie planszy
+            self.current_prediction = None;
         }
     }
     
@@ -189,6 +209,9 @@ impl GameOfLifeApp {
         if let Some(expanded_board) = self.board.auto_expand_if_needed(config.expansion_margin) {
             self.board = expanded_board;
         }
+        
+        // Invalidujemy cache przewidywania po zmianie stanu
+        self.current_prediction = None;
     }
     
     /// Resetuje planszę do stanu początkowego
@@ -198,6 +221,27 @@ impl GameOfLifeApp {
         self.side_panel.reset_generation_count();
         self.side_panel.set_alive_cells_count(self.board.count_alive_cells());
         self.cell_state_manager.reset();
+        
+        // Invalidujemy cache przewidywania po resecie
+        self.current_prediction = None;
+    }
+    
+    /// Aktualizuje przewidywanie następnego stanu jeśli jest potrzebne
+    fn update_prediction_if_needed(&mut self) {
+        // Obliczamy przewidywanie tylko jeśli:
+        // 1. Symulacja jest zatrzymana (aby nie obciążać podczas działania)
+        // 2. Użytkownik włączył podgląd
+        // 3. Nie mamy jeszcze cache'owanego przewidywania
+        if self.side_panel.simulation_state() == SimulationState::Stopped 
+            && (self.side_panel.show_next_state_preview() || self.side_panel.show_previous_state_preview())
+            && self.current_prediction.is_none() {
+            self.current_prediction = Some(predict_next_state(&self.board));
+        }
+        
+        // Jeśli użytkownik wyłączył podgląd, możemy wyczyścić cache
+        if !self.side_panel.show_next_state_preview() && !self.side_panel.show_previous_state_preview() {
+            self.current_prediction = None;
+        }
     }
 }
 

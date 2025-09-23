@@ -5,6 +5,8 @@
 
 use egui::{Color32, Pos2, Rect, Stroke, Vec2};
 use crate::logic::board::{Board, CellState};
+use crate::logic::prediction::PredictionResult;
+use super::preview_render::PreviewRenderer;
 
 /// Informacje o interakcji myszy z planszą
 #[derive(Debug, Clone)]
@@ -33,6 +35,8 @@ pub struct GameRenderer {
     grid_color: Color32,
     /// Grubość linii siatki
     grid_stroke: Stroke,
+    /// Renderer podglądu następnego stanu
+    preview_renderer: PreviewRenderer,
 }
 
 impl Default for GameRenderer {
@@ -43,6 +47,7 @@ impl Default for GameRenderer {
             dead_color: Color32::WHITE,
             grid_color: Color32::GRAY,
             grid_stroke: Stroke::new(1.0, Color32::GRAY),
+            preview_renderer: PreviewRenderer::new(),
         }
     }
 }
@@ -88,6 +93,19 @@ impl GameRenderer {
         board: &Board,
         available_rect: Rect,
     ) -> MouseInteraction {
+        self.render_board_with_preview(ui, board, available_rect, None, false, false)
+    }
+    
+    /// Renderuje planszę z podglądem następnego stanu
+    pub fn render_board_with_preview(
+        &mut self,
+        ui: &mut egui::Ui,
+        board: &Board,
+        available_rect: Rect,
+        prediction: Option<&PredictionResult>,
+        show_births: bool,
+        show_deaths: bool,
+    ) -> MouseInteraction {
         // Obliczamy optymalny rozmiar komórki na podstawie wysokości
         let optimal_cell_size = self.calculate_optimal_cell_size(board, available_rect.height());
         self.set_cell_size(optimal_cell_size);
@@ -114,6 +132,18 @@ impl GameRenderer {
         
         // Renderujemy planszę
         self.render_board_in_rect(ui, board, final_board_rect);
+        
+        // Renderujemy podgląd jeśli jest dostępny
+        if let Some(prediction) = prediction {
+            self.preview_renderer.render_preview_highlights(
+                ui, 
+                prediction, 
+                final_board_rect, 
+                self.cell_size, 
+                show_births, 
+                show_deaths
+            );
+        }
         
         // Sprawdzamy interakcje myszy
         let pointer_pos = ui.input(|i| i.pointer.interact_pos());
