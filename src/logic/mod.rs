@@ -10,6 +10,7 @@ pub mod life_cycle;
 pub mod change_state;
 pub mod prediction;
 pub mod reset;
+pub mod randomizer;
 
 // Re-eksportujemy najważniejsze typy z modułu board (gdy będą potrzebne)
 // pub use board::{Board, CellState};

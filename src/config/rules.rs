@@ -56,6 +56,28 @@ pub struct GameConfig {
     
     /// Parametry interfejsu użytkownika
     pub ui_config: UIConfig,
+    
+    /// Konfiguracja randomizera planszy
+    pub randomizer_config: RandomizerConfig,
+}
+
+/// Konfiguracja randomizera planszy
+#[derive(Debug, Clone)]
+pub struct RandomizerConfig {
+    /// Bazowe prawdopodobieństwo że komórka będzie żywa (0.0 - 1.0)
+    pub base_probability: f32,
+    
+    /// Bonus prawdopodobieństwa za każdego żywego sąsiada (0.0 - 1.0)
+    pub neighbor_bonus: f32,
+}
+
+impl Default for RandomizerConfig {
+    fn default() -> Self {
+        Self {
+            base_probability: 0.20,    // 20% bazowe prawdopodobieństwo
+            neighbor_bonus: 0.10,      // +10% za każdego sąsiada
+        }
+    }
 }
 
 /// Konfiguracja parametrów interfejsu użytkownika
@@ -140,6 +162,9 @@ impl Default for GameConfig {
             
             // Konfiguracja interfejsu użytkownika
             ui_config: UIConfig::default(),
+            
+            // Konfiguracja randomizera
+            randomizer_config: RandomizerConfig::default(),
         }
     }
 }
@@ -215,5 +240,15 @@ impl GameConfig {
     /// Ustawia stały rozmiar planszy (tryb Static)
     pub fn set_static_board_size(&mut self, size: usize) {
         self.static_board_size = size.max(3).min(201); // Ograniczenie 3-201
+    }
+    
+    /// Ustawia bazowe prawdopodobieństwo randomizera
+    pub fn set_randomizer_base_probability(&mut self, probability: f32) {
+        self.randomizer_config.base_probability = probability.max(0.0).min(1.0);
+    }
+    
+    /// Ustawia bonus prawdopodobieństwa za sąsiada
+    pub fn set_randomizer_neighbor_bonus(&mut self, bonus: f32) {
+        self.randomizer_config.neighbor_bonus = bonus.max(0.0).min(1.0);
     }
 }

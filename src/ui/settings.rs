@@ -21,6 +21,10 @@ pub enum SettingsAction {
     ResetRules,
     /// Zresetuj ustawienia planszy do wartości domyślnych
     ResetBoardSettings,
+    /// Zmieniono ustawienia randomizera
+    RandomizerChanged,
+    /// Zresetuj ustawienia randomizera do wartości domyślnych
+    ResetRandomizer,
 }
 
 /// Panel ustawień gry
@@ -31,6 +35,8 @@ pub struct SettingsPanel {
     rules_expanded: bool,
     /// Czy sekcja ustawień planszy jest rozwinięta
     board_settings_expanded: bool,
+    /// Czy sekcja randomizera jest rozwinięta
+    randomizer_expanded: bool,
     
     // Lokalne kopie wartości do edycji
     birth_min: usize,
@@ -41,6 +47,10 @@ pub struct SettingsPanel {
     max_board_size: usize,
     initial_board_size: usize,
     static_board_size: usize,
+    
+    // Randomizer settings
+    base_probability: f32,
+    neighbor_bonus: f32,
 }
 
 impl Default for SettingsPanel {
@@ -50,6 +60,7 @@ impl Default for SettingsPanel {
             settings_expanded: false,
             rules_expanded: false,
             board_settings_expanded: false,
+            randomizer_expanded: false,
             birth_min: *config.birth_neighbors.start(),
             birth_max: *config.birth_neighbors.end(),
             survival_min: *config.survival_neighbors.start(),
@@ -58,6 +69,8 @@ impl Default for SettingsPanel {
             max_board_size: config.max_board_size,
             initial_board_size: config.initial_board_size,
             static_board_size: config.static_board_size,
+            base_probability: config.randomizer_config.base_probability,
+            neighbor_bonus: config.randomizer_config.neighbor_bonus,
         }
     }
 }
@@ -79,6 +92,8 @@ impl SettingsPanel {
         self.max_board_size = config.max_board_size;
         self.initial_board_size = config.initial_board_size;
         self.static_board_size = config.static_board_size;
+        self.base_probability = config.randomizer_config.base_probability;
+        self.neighbor_bonus = config.randomizer_config.neighbor_bonus;
     }
     
     /// Renderuje panel ustawień
@@ -421,6 +436,11 @@ impl SettingsPanel {
                 
                 // Sekcja ustawień planszy
                 action = self.render_board_settings_section_styled(ui, styles).max(action);
+                
+                ui.add_space(styles.separator_spacing());
+                
+                // Sekcja randomizera
+                action = self.render_randomizer_section_styled(ui, styles).max(action);
             }
         });
         
@@ -732,6 +752,105 @@ impl SettingsPanel {
                 // Jeśli rozmiar się zmienił, wyślij dodatkową akcję
                 if old_size != self.static_board_size {
                     action = SettingsAction::BoardSizeChanged(self.static_board_size);
+                }
+            }
+        });
+        
+        action
+    }
+    
+    /// Renderuje sekcję randomizera ze stylami
+    fn render_randomizer_section_styled(&mut self, ui: &mut egui::Ui, styles: &UIStyles) -> SettingsAction {
+        let mut action = SettingsAction::None;
+        
+        styles.nested_group_style().show(ui, |ui| {
+            ui.horizontal(|ui| {
+                let randomizer_text = if self.randomizer_expanded {
+                    "🔽 Randomizer"
+                } else {
+                    "▶ Randomizer"
+                };
+                
+                if ui.add(helpers::styled_button(randomizer_text, styles.colors.text_secondary, styles, ButtonType::Medium)).clicked() {
+                    self.randomizer_expanded = !self.randomizer_expanded;
+                }
+                
+                // Przycisk resetowania randomizera
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.add(helpers::styled_button("🗑 Reset", styles.colors.error, styles, ButtonType::Small)).clicked() {
+                        action = SettingsAction::ResetRandomizer;
+                    }
+                });
+            });
+            
+            if self.randomizer_expanded {
+                ui.add_space(styles.dimensions.margin_medium);
+                
+                // Base Probability
+                ui.label(helpers::subsection_header("Base Probability:", styles));
+                ui.add_space(styles.dimensions.margin_small);
+                
+                ui.horizontal(|ui| {
+                    if ui.add(Slider::new(&mut self.base_probability, 0.0..=1.0)
+                        .text("Base %")
+                        .min_decimals(1)
+                        .max_decimals(3)
+                        .step_by(0.01)).changed() {
+                        
+                        // Zapisujemy zmianę do konfiguracji natychmiast
+                        modify_config(|config| {
+                            config.set_randomizer_base_probability(self.base_probability);
+                        });
+                        
+                        action = SettingsAction::RandomizerChanged;
+                    }
+                });
+                
+                ui.label(helpers::value_text(&format!("Current: {:.1}%", self.base_probability * 100.0), styles));
+                
+                ui.add_space(styles.dimensions.margin_small);
+                
+                // Neighbor Bonus
+                ui.label(helpers::subsection_header("Neighbor Bonus:", styles));
+                ui.add_space(styles.dimensions.margin_small);
+                
+                ui.horizontal(|ui| {
+                    if ui.add(Slider::new(&mut self.neighbor_bonus, 0.0..=1.0)
+                        .text("Bonus %")
+                        .min_decimals(1)
+                        .max_decimals(3)
+                        .step_by(0.01)).changed() {
+                        
+                        // Zapisujemy zmianę do konfiguracji natychmiast
+                        modify_config(|config| {
+                            config.set_randomizer_neighbor_bonus(self.neighbor_bonus);
+                        });
+                        
+                        action = SettingsAction::RandomizerChanged;
+                    }
+                });
+                
+                ui.label(helpers::value_text(&format!("Current: +{:.1}% per neighbor", self.neighbor_bonus * 100.0), styles));
+                
+                ui.add_space(styles.dimensions.margin_small);
+                
+                // Wyjaśnienie działania
+                ui.label(helpers::label_text("Each cell has base probability + (neighbors × bonus)", styles));
+                ui.label(helpers::label_text("Example: 10% base + 2 neighbors × 10% = 30% chance", styles));
+                
+                // Obsługa resetowania randomizera
+                if action == SettingsAction::ResetRandomizer {
+                    // Resetuj do wartości domyślnych
+                    let default_config = crate::config::rules::GameConfig::default();
+                    self.base_probability = default_config.randomizer_config.base_probability;
+                    self.neighbor_bonus = default_config.randomizer_config.neighbor_bonus;
+                    
+                    modify_config(|config| {
+                        config.set_randomizer_base_probability(self.base_probability);
+                        config.set_randomizer_neighbor_bonus(self.neighbor_bonus);
+                    });
+                    
+                    action = SettingsAction::RandomizerChanged; // Informuj o zmianie
                 }
             }
         });

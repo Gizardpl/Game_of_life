@@ -34,6 +34,8 @@ pub enum UserAction {
     BoardSettingsChanged,
     /// Zmieniono rozmiar planszy (nowy rozmiar)
     BoardSizeChanged(usize),
+    /// Wygeneruj losową planszę
+    RandomFill,
     /// Brak akcji
     None,
 }
@@ -302,6 +304,14 @@ impl SidePanel {
                                         ui.colored_label(self.styles.colors.preview_death, "● Deaths");
                                     });
                                 }
+                                
+                                // Przycisk Random Fill - tylko gdy gra jest zatrzymana
+                                ui.add_enabled_ui(!is_running, |ui| {
+                                    ui.add_space(self.styles.dimensions.margin_small);
+                                    if ui.add(helpers::styled_button("🎲 Random Fill", self.styles.colors.button_step, &self.styles, ButtonType::Medium)).clicked() {
+                                        action = UserAction::RandomFill;
+                                    }
+                                });
                                 // Gdy gra jest uruchomiona, nie pokazujemy wcale Birth/Deaths
                             });
                         });
@@ -317,6 +327,8 @@ impl SidePanel {
                         SettingsAction::BoardSizeChanged(size) => action = UserAction::BoardSizeChanged(size),
                         SettingsAction::ResetRules => action = UserAction::RulesChanged,
                         SettingsAction::ResetBoardSettings => action = UserAction::BoardSettingsChanged,
+                        SettingsAction::RandomizerChanged => {}, // Randomizer nie wymaga akcji - tylko zmiana konfiguracji
+                        SettingsAction::ResetRandomizer => {}, // Reset randomizera też nie wymaga akcji
                         SettingsAction::None => {}
                     }
                     

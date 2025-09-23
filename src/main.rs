@@ -7,6 +7,7 @@ use logic::board::{Board};
 use logic::change_state::CellStateManager;
 use logic::prediction::{predict_next_state, PredictionResult};
 use logic::reset::ResetManager;
+use logic::randomizer;
 use ui::{GameRenderer, SidePanel, MouseInteraction};
 use ui::side_panel::{SimulationState, UserAction};
 
@@ -179,6 +180,12 @@ impl GameOfLifeApp {
                 // Zmieniono rozmiar planszy - musimy zmienić rozmiar aktualnej planszy
                 self.resize_board_to(new_size);
             }
+            UserAction::RandomFill => {
+                // Generuj losową planszę - tylko gdy symulacja jest zatrzymana
+                if self.side_panel.simulation_state() == SimulationState::Stopped {
+                    self.generate_random_board();
+                }
+            }
             UserAction::None => {
                 // Brak akcji
             }
@@ -334,6 +341,31 @@ impl GameOfLifeApp {
         
         // Invalidujemy cache przewidywania
         self.current_prediction = None;
+    }
+    
+    /// Generuje losową planszę używając inteligentnego algorytmu randomizera
+    fn generate_random_board(&mut self) {
+        // Generujemy nową losową planszę na podstawie aktualnego rozmiaru
+        let new_board = randomizer::generate_random_board(&self.board);
+        
+        // Zastępujemy aktualną planszę nową losową planszą
+        self.board = new_board;
+        
+        // Aktualizujemy liczbę żywych komórek w panelu bocznym
+        self.side_panel.set_alive_cells_count(self.board.count_alive_cells());
+        
+        // Invalidujemy cache przewidywania
+        self.current_prediction = None;
+        
+        // Resetujemy licznik generacji, ponieważ to nowy początkowy stan
+        self.side_panel.reset_generation_count();
+        
+        // Zapisujemy nowy stan jako stan początkowy do resetowania
+        // (jeśli gra była już kiedyś uruchomiona)
+        if self.ever_started {
+            self.reset_manager.clear_pre_start_state();
+            self.reset_manager.save_pre_start_state(&self.board);
+        }
     }
 }
 
