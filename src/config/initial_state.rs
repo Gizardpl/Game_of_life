@@ -71,7 +71,7 @@ pub struct InitialState {
 impl Default for InitialState {
     fn default() -> Self {
         Self {
-            pattern: Pattern::Glider,
+            pattern: Pattern::Empty,
             offset: (2, 2),
         }
     }
@@ -91,6 +91,19 @@ impl InitialState {
         // Używamy większego z: rozmiaru z konfiguracji lub minimalnego rozmiaru dla wzoru
         let width = config.initial_board_size.max(min_width);
         let height = config.initial_board_size.max(min_height);
+        
+        let mut board = Board::new(width, height);
+        self.apply_to_board(&mut board);
+        board
+    }
+    
+    /// Tworzy planszę z określonym rozmiarem
+    pub fn create_board_with_size(&self, size: usize) -> Board {
+        let (min_width, min_height) = self.pattern.min_board_size();
+        
+        // Używamy większego z: podanego rozmiaru lub minimalnego rozmiaru dla wzoru
+        let width = size.max(min_width);
+        let height = size.max(min_height);
         
         let mut board = Board::new(width, height);
         self.apply_to_board(&mut board);

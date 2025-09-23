@@ -4,7 +4,21 @@
 /// przez użytkownika poprzez GUI.
 
 use std::ops::RangeInclusive;
-use std::sync::OnceLock;
+
+/// Tryb zarządzania rozmiarem planszy
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BoardSizeMode {
+    /// Dynamiczny rozmiar - plansza rozszerza się automatycznie
+    Dynamic,
+    /// Statyczny rozmiar - plansza ma stały rozmiar
+    Static,
+}
+
+impl Default for BoardSizeMode {
+    fn default() -> Self {
+        BoardSizeMode::Dynamic
+    }
+}
 
 /// Struktura zawierająca wszystkie parametry konfiguracyjne gry
 #[derive(Debug, Clone)]
@@ -17,12 +31,18 @@ pub struct GameConfig {
     /// Domyślnie: 2-3 (standardowa reguła Conway'a)
     pub survival_neighbors: RangeInclusive<usize>,
     
-    /// Maksymalny rozmiar planszy (szerokość i wysokość)
+    /// Tryb zarządzania rozmiarem planszy
+    pub board_size_mode: BoardSizeMode,
+    
+    /// Maksymalny rozmiar planszy (szerokość i wysokość) - używany w trybie Dynamic
     /// Po osiągnięciu tego rozmiaru plansza nie będzie się dalej rozszerzać
     pub max_board_size: usize,
     
-    /// Początkowy rozmiar planszy przy starcie gry
+    /// Początkowy rozmiar planszy przy starcie gry - używany w trybie Dynamic
     pub initial_board_size: usize,
+    
+    /// Stały rozmiar planszy - używany w trybie Static
+    pub static_board_size: usize,
     
     /// Margines od krawędzi planszy, przy którym następuje automatyczne rozszerzenie
     /// (jeśli nie osiągnięto maksymalnego rozmiaru)
@@ -103,9 +123,15 @@ impl Default for GameConfig {
             birth_neighbors: 3..=3,           // Narodziny przy dokładnie 3 sąsiadach
             survival_neighbors: 2..=3,        // Przeżycie przy 2 lub 3 sąsiadach
             
-            // Ograniczenia rozmiaru planszy
+            // Tryb zarządzania planszą
+            board_size_mode: BoardSizeMode::Dynamic,
+            
+            // Ograniczenia rozmiaru planszy (tryb Dynamic)
             max_board_size: 101,              // Maksymalny rozmiar 101x101
-            initial_board_size: 9,          // Początkowy rozmiar planszy
+            initial_board_size: 9,            // Początkowy rozmiar planszy
+            
+            // Stały rozmiar planszy (tryb Static)
+            static_board_size: 21,            // Domyślny stały rozmiar 21x21
             
             // Parametry rozszerzania
             expansion_margin: 2,              // Rozszerzaj gdy żywe komórki są 2 pola od krawędzi
@@ -147,18 +173,47 @@ impl GameConfig {
         let proposed_size = current_size + (2 * layers);
         proposed_size.min(self.max_board_size)
     }
-}
-
-/// Globalna instancja konfiguracji
-/// W przyszłości może być zastąpiona przez system ładowania z pliku lub GUI
-static GLOBAL_CONFIG: OnceLock<GameConfig> = OnceLock::new();
-
-/// Inicjalizuje globalną konfigurację
-pub fn init_config() {
-    GLOBAL_CONFIG.get_or_init(|| GameConfig::default());
-}
-
-/// Zwraca referencję do globalnej konfiguracji
-pub fn get_config() -> &'static GameConfig {
-    GLOBAL_CONFIG.get_or_init(|| GameConfig::default())
+    
+    /// Zwraca aktualny rozmiar planszy w zależności od trybu
+    pub fn get_current_board_size(&self) -> usize {
+        match self.board_size_mode {
+            BoardSizeMode::Dynamic => self.initial_board_size,
+            BoardSizeMode::Static => self.static_board_size,
+        }
+    }
+    
+    /// Sprawdza czy można rozszerzać planszę w aktualnym trybie
+    pub fn can_expand_in_current_mode(&self) -> bool {
+        self.board_size_mode == BoardSizeMode::Dynamic
+    }
+    
+    /// Ustawia nowy przedział dla narodzin komórek
+    pub fn set_birth_neighbors(&mut self, min: usize, max: usize) {
+        self.birth_neighbors = min..=max;
+    }
+    
+    /// Ustawia nowy przedział dla przeżycia komórek
+    pub fn set_survival_neighbors(&mut self, min: usize, max: usize) {
+        self.survival_neighbors = min..=max;
+    }
+    
+    /// Ustawia tryb zarządzania planszą
+    pub fn set_board_size_mode(&mut self, mode: BoardSizeMode) {
+        self.board_size_mode = mode;
+    }
+    
+    /// Ustawia maksymalny rozmiar planszy (tryb Dynamic)
+    pub fn set_max_board_size(&mut self, size: usize) {
+        self.max_board_size = size.max(3).min(201); // Ograniczenie 3-201
+    }
+    
+    /// Ustawia początkowy rozmiar planszy (tryb Dynamic)
+    pub fn set_initial_board_size(&mut self, size: usize) {
+        self.initial_board_size = size.max(3).min(201); // Ograniczenie 3-201
+    }
+    
+    /// Ustawia stały rozmiar planszy (tryb Static)
+    pub fn set_static_board_size(&mut self, size: usize) {
+        self.static_board_size = size.max(3).min(201); // Ograniczenie 3-201
+    }
 }

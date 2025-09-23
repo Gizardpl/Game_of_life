@@ -3,6 +3,7 @@
 /// Zawiera przyciski Start/Stop, Reset oraz inne opcje sterowania symulacją.
 
 use egui::{Button, RichText, Color32};
+use super::settings::{SettingsPanel, SettingsAction};
 
 /// Stan symulacji
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -26,6 +27,12 @@ pub enum UserAction {
     Step,
     /// Edytuj komórkę na podanych współrzędnych (x, y)
     EditCell(usize, usize),
+    /// Zmieniono zasady gry
+    RulesChanged,
+    /// Zmieniono ustawienia planszy
+    BoardSettingsChanged,
+    /// Zmieniono rozmiar planszy (nowy rozmiar)
+    BoardSizeChanged(usize),
     /// Brak akcji
     None,
 }
@@ -46,6 +53,8 @@ pub struct SidePanel {
     show_previous_state_preview: bool,
     /// Czy sekcja instrukcji jest rozwinięta
     instructions_expanded: bool,
+    /// Panel ustawień gry
+    settings_panel: SettingsPanel,
 }
 
 impl Default for SidePanel {
@@ -59,6 +68,7 @@ impl Default for SidePanel {
             show_next_state_preview: false,
             show_previous_state_preview: false,
             instructions_expanded: false,
+            settings_panel: SettingsPanel::new(),
         }
     }
 }
@@ -274,6 +284,19 @@ impl SidePanel {
                     }
                 });
             });
+            
+            ui.separator();
+            
+            // Sekcja ustawień gry
+            let settings_action = self.settings_panel.render(ui);
+            match settings_action {
+                SettingsAction::RulesChanged => action = UserAction::RulesChanged,
+                SettingsAction::BoardSettingsChanged => action = UserAction::BoardSettingsChanged,
+                SettingsAction::BoardSizeChanged(size) => action = UserAction::BoardSizeChanged(size),
+                SettingsAction::ResetRules => action = UserAction::RulesChanged,
+                SettingsAction::ResetBoardSettings => action = UserAction::BoardSettingsChanged,
+                SettingsAction::None => {}
+            }
             
             ui.separator();
             

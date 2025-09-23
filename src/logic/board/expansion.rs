@@ -200,4 +200,61 @@ impl Board {
         
         Some(optimized_board)
     }
+
+    /// Zmienia rozmiar planszy do określonych wymiarów
+    /// 
+    /// Jeśli nowy rozmiar jest większy, dodaje puste komórki dookoła.
+    /// Jeśli nowy rozmiar jest mniejszy, obcina komórki z krawędzi.
+    /// Komórki są wyśrodkowane w nowej planszy.
+    pub fn resize_to(&self, new_width: usize, new_height: usize) -> Board {
+        let mut new_board = Board::new(new_width, new_height);
+        
+        // Obliczamy offset do wyśrodkowania
+        let offset_x = if new_width > self.width() {
+            (new_width - self.width()) / 2
+        } else {
+            0
+        };
+        let offset_y = if new_height > self.height() {
+            (new_height - self.height()) / 2
+        } else {
+            0
+        };
+        
+        // Obliczamy zakres komórek do skopiowania
+        let start_x = if new_width < self.width() {
+            (self.width() - new_width) / 2
+        } else {
+            0
+        };
+        let start_y = if new_height < self.height() {
+            (self.height() - new_height) / 2
+        } else {
+            0
+        };
+        
+        let end_x = (start_x + new_width).min(self.width());
+        let end_y = (start_y + new_height).min(self.height());
+        
+        // Kopiujemy komórki
+        for y in start_y..end_y {
+            for x in start_x..end_x {
+                if let Some(cell_state) = self.get_cell(x, y) {
+                    let new_x = (x - start_x) + offset_x;
+                    let new_y = (y - start_y) + offset_y;
+                    
+                    if new_x < new_width && new_y < new_height {
+                        new_board.set_cell(new_x, new_y, cell_state);
+                    }
+                }
+            }
+        }
+        
+        new_board
+    }
+
+    /// Zmienia rozmiar planszy do kwadratu o podanym rozmiarze
+    pub fn resize_to_square(&self, size: usize) -> Board {
+        self.resize_to(size, size)
+    }
 }

@@ -3,9 +3,10 @@ mod logic;
 mod ui;
 
 use config::{init_config, get_default_initial_state};
-use logic::board::Board;
+use logic::board::{Board};
 use logic::change_state::CellStateManager;
 use logic::prediction::{predict_next_state, PredictionResult};
+use logic::reset::ResetManager;
 use ui::{GameRenderer, SidePanel, MouseInteraction};
 use ui::side_panel::{SimulationState, UserAction};
 
@@ -28,6 +29,10 @@ struct GameOfLifeApp {
     last_update: Instant,
     /// Przewidywanie następnego stanu (cache)
     current_prediction: Option<PredictionResult>,
+    /// Czy aplikacja była kiedykolwiek uruchomiona
+    ever_started: bool,
+    /// Manager odpowiedzialny za logikę resetowania
+    reset_manager: ResetManager,
 }
 
 impl Default for GameOfLifeApp {
@@ -51,6 +56,8 @@ impl Default for GameOfLifeApp {
             cell_state_manager: CellStateManager::new(),
             last_update: Instant::now(),
             current_prediction: None,
+            ever_started: false,
+            reset_manager: ResetManager::new(),
         }
     }
 }
@@ -127,8 +134,14 @@ impl GameOfLifeApp {
     fn handle_user_action(&mut self, action: UserAction) {
         match action {
             UserAction::Start => {
+                // Jeśli to pierwsze uruchomienie, zapisujemy aktualny stan planszy
+                if !self.ever_started {
+                    self.reset_manager.save_pre_start_state(&self.board);
+                }
+                
                 self.side_panel.set_simulation_state(SimulationState::Running);
                 self.last_update = Instant::now();
+                self.ever_started = true;
             }
             UserAction::Stop => {
                 self.side_panel.set_simulation_state(SimulationState::Stopped);
@@ -151,6 +164,20 @@ impl GameOfLifeApp {
                         self.current_prediction = None;
                     }
                 }
+            }
+            UserAction::RulesChanged => {
+                // Zasady gry zostały zmienione - invalidujemy cache przewidywania
+                self.current_prediction = None;
+            }
+            UserAction::BoardSettingsChanged => {
+                // Ustawienia planszy zostały zmienione - invalidujemy cache przewidywania
+                // Nie zmieniamy rozmiaru planszy automatycznie - to powinno się dziać tylko
+                // przez explicit BoardSizeChanged lub Reset
+                self.current_prediction = None;
+            }
+            UserAction::BoardSizeChanged(new_size) => {
+                // Zmieniono rozmiar planszy - musimy zmienić rozmiar aktualnej planszy
+                self.resize_board_to(new_size);
             }
             UserAction::None => {
                 // Brak akcji
@@ -216,11 +243,27 @@ impl GameOfLifeApp {
     
     /// Resetuje planszę do stanu początkowego
     fn reset_to_initial_state(&mut self) {
-        self.board = self.initial_board.clone();
+        // Zatrzymujemy symulację
         self.side_panel.set_simulation_state(SimulationState::Stopped);
         self.side_panel.reset_generation_count();
-        self.side_panel.set_alive_cells_count(self.board.count_alive_cells());
         self.cell_state_manager.reset();
+        
+        // Używamy ResetManager do obsługi logiki resetowania
+        let (new_board, should_reset_ever_started) = self.reset_manager.reset_board(&self.board, self.ever_started);
+        
+        // Aktualizujemy planszę
+        self.board = new_board;
+        
+        // Resetujemy flagę ever_started jeśli to konieczne
+        if should_reset_ever_started {
+            self.ever_started = false;
+        }
+        
+        // Aktualizujemy planszę początkową
+        self.initial_board = self.board.clone();
+        
+        // Aktualizujemy statystyki
+        self.side_panel.set_alive_cells_count(self.board.count_alive_cells());
         
         // Invalidujemy cache przewidywania po resecie
         self.current_prediction = None;
@@ -242,6 +285,48 @@ impl GameOfLifeApp {
         if !self.side_panel.show_next_state_preview() && !self.side_panel.show_previous_state_preview() {
             self.current_prediction = None;
         }
+    }
+    
+    /// Zmienia rozmiar planszy do podanego rozmiaru
+    fn resize_board_to(&mut self, new_size: usize) {
+        // Zatrzymujemy symulację podczas zmiany rozmiaru
+        self.side_panel.set_simulation_state(SimulationState::Stopped);
+        
+        // Pobieramy aktualne ustawienia z konfiguracji
+        let config = config::get_config();
+        
+        // Zmieniamy rozmiar tylko jeśli aplikacja nie była jeszcze uruchomiona
+        // lub jeśli użytkownik świadomie zmienia rozmiar w trybie Static
+        if !self.ever_started {
+            // Aplikacja nie była uruchomiona - możemy bezpiecznie zmienić rozmiar
+            self.board = self.board.resize_to_square(new_size);
+            self.initial_board = self.board.clone();
+            
+            // Aktualizujemy liczbę żywych komórek
+            self.side_panel.set_alive_cells_count(self.board.count_alive_cells());
+        } else {
+            // Aplikacja była uruchomiona - zmieniamy rozmiar tylko w trybie Static
+            if config.board_size_mode == config::BoardSizeMode::Static {
+                self.board = self.board.resize_to_square(new_size);
+                
+                // Aktualizujemy też zapisany stan przed uruchomieniem jeśli istnieje
+                if self.reset_manager.has_pre_start_state() {
+                    // Tworzymy tymczasową planszę do aktualizacji stanu przed uruchomieniem
+                    // To jest trochę skomplikowane, ale potrzebne aby zachować enkapsulację
+                    let (temp_board, _) = self.reset_manager.reset_board(&self.board, true);
+                    let resized_temp = temp_board.resize_to_square(new_size);
+                    self.reset_manager.clear_pre_start_state();
+                    self.reset_manager.save_pre_start_state(&resized_temp);
+                }
+                
+                // Aktualizujemy liczbę żywych komórek
+                self.side_panel.set_alive_cells_count(self.board.count_alive_cells());
+            }
+            // W trybie Dynamic ignorujemy zmiany rozmiaru gdy aplikacja była uruchomiona
+        }
+        
+        // Invalidujemy cache przewidywania
+        self.current_prediction = None;
     }
 }
 
