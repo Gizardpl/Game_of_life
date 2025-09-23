@@ -4,7 +4,8 @@ mod ui;
 
 use config::{init_config, get_default_initial_state};
 use logic::board::Board;
-use ui::{GameRenderer, SidePanel};
+use logic::change_state::CellStateManager;
+use ui::{GameRenderer, SidePanel, MouseInteraction};
 use ui::side_panel::{SimulationState, UserAction};
 
 use eframe::egui;
@@ -20,6 +21,8 @@ struct GameOfLifeApp {
     renderer: GameRenderer,
     /// Panel boczny z kontrolkami
     side_panel: SidePanel,
+    /// Manager zarządzania zmianą stanu komórek
+    cell_state_manager: CellStateManager,
     /// Czas ostatniej aktualizacji
     last_update: Instant,
 }
@@ -42,6 +45,7 @@ impl Default for GameOfLifeApp {
             initial_board,
             renderer: GameRenderer::new(),
             side_panel,
+            cell_state_manager: CellStateManager::new(),
             last_update: Instant::now(),
         }
     }
@@ -89,11 +93,11 @@ impl eframe::App for GameOfLifeApp {
                     egui::Layout::top_down(egui::Align::LEFT),
                     |ui| {
                         let board_rect = ui.available_rect_before_wrap();
-                        if let Some((x, y)) = self.renderer.render_board(ui, &self.board, board_rect) {
-                            // Użytkownik kliknął na komórkę - obsługujemy edycję tylko gdy symulacja zatrzymana
-                            if self.side_panel.simulation_state() == SimulationState::Stopped {
-                                self.handle_user_action(UserAction::EditCell(x, y));
-                            }
+                        let mouse_interaction = self.renderer.render_board(ui, &self.board, board_rect);
+                        
+                        // Obsługujemy interakcje myszy tylko gdy symulacja zatrzymana
+                        if self.side_panel.simulation_state() == SimulationState::Stopped {
+                            self.handle_mouse_interaction(mouse_interaction);
                         }
                     }
                 );
@@ -124,7 +128,7 @@ impl GameOfLifeApp {
             UserAction::EditCell(x, y) => {
                 // Edycja komórki jest dozwolona tylko gdy symulacja jest zatrzymana
                 if self.side_panel.simulation_state() == SimulationState::Stopped {
-                    if self.board.toggle_cell(x, y) {
+                    if self.cell_state_manager.handle_cell_click(&mut self.board, x, y) {
                         // Aktualizujemy liczbę żywych komórek po zmianie
                         self.side_panel.set_alive_cells_count(self.board.count_alive_cells());
                     }
@@ -133,6 +137,44 @@ impl GameOfLifeApp {
             UserAction::None => {
                 // Brak akcji
             }
+        }
+    }
+    
+    /// Obsługuje interakcje myszy z planszą
+    fn handle_mouse_interaction(&mut self, interaction: MouseInteraction) {
+        let mut board_changed = false;
+        
+        // Obsługa kliknięcia (bez przeciągania)
+        if let Some((x, y)) = interaction.clicked_cell {
+            if !self.cell_state_manager.is_dragging() {
+                board_changed = self.cell_state_manager.handle_cell_click(&mut self.board, x, y);
+            }
+        }
+        
+        // Obsługa rozpoczęcia przeciągania
+        if interaction.mouse_pressed {
+            if let Some((x, y)) = interaction.hovered_cell {
+                board_changed = self.cell_state_manager.start_drag(&mut self.board, x, y);
+            }
+        }
+        
+        // Obsługa kontynuacji przeciągania
+        if interaction.is_mouse_down && self.cell_state_manager.is_dragging() {
+            if let Some((x, y)) = interaction.hovered_cell {
+                if self.cell_state_manager.handle_mouse_over(&mut self.board, x, y) {
+                    board_changed = true;
+                }
+            }
+        }
+        
+        // Obsługa zakończenia przeciągania
+        if interaction.mouse_released {
+            self.cell_state_manager.end_drag();
+        }
+        
+        // Aktualizujemy liczbę żywych komórek jeśli plansza się zmieniła
+        if board_changed {
+            self.side_panel.set_alive_cells_count(self.board.count_alive_cells());
         }
     }
     
@@ -155,6 +197,7 @@ impl GameOfLifeApp {
         self.side_panel.set_simulation_state(SimulationState::Stopped);
         self.side_panel.reset_generation_count();
         self.side_panel.set_alive_cells_count(self.board.count_alive_cells());
+        self.cell_state_manager.reset();
     }
 }
 

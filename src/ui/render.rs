@@ -6,6 +6,21 @@
 use egui::{Color32, Pos2, Rect, Stroke, Vec2};
 use crate::logic::board::{Board, CellState};
 
+/// Informacje o interakcji myszy z planszą
+#[derive(Debug, Clone)]
+pub struct MouseInteraction {
+    /// Współrzędne komórki, na którą kliknięto (lewy przycisk myszy)
+    pub clicked_cell: Option<(usize, usize)>,
+    /// Współrzędne komórki, nad którą znajduje się kursor
+    pub hovered_cell: Option<(usize, usize)>,
+    /// Czy lewy przycisk myszy jest wciśnięty
+    pub is_mouse_down: bool,
+    /// Czy lewy przycisk myszy został właśnie wciśnięty
+    pub mouse_pressed: bool,
+    /// Czy lewy przycisk myszy został właśnie zwolniony
+    pub mouse_released: bool,
+}
+
 /// Renderer planszy gry
 pub struct GameRenderer {
     /// Rozmiar pojedynczej komórki w pikselach
@@ -66,13 +81,13 @@ impl GameRenderer {
         }
     }
     
-    /// Renderuje planszę w podanym obszarze i zwraca opcjonalne współrzędne klikniętej komórki
+    /// Renderuje planszę w podanym obszarze i zwraca informacje o interakcji myszy
     pub fn render_board(
         &mut self,
         ui: &mut egui::Ui,
         board: &Board,
         available_rect: Rect,
-    ) -> Option<(usize, usize)> {
+    ) -> MouseInteraction {
         // Obliczamy optymalny rozmiar komórki na podstawie wysokości
         let optimal_cell_size = self.calculate_optimal_cell_size(board, available_rect.height());
         self.set_cell_size(optimal_cell_size);
@@ -100,18 +115,31 @@ impl GameRenderer {
         // Renderujemy planszę
         self.render_board_in_rect(ui, board, final_board_rect);
         
-        // Sprawdzamy czy użytkownik kliknął na planszę
-        let clicked_cell = if ui.input(|i| i.pointer.any_click()) {
-            if let Some(pointer_pos) = ui.input(|i| i.pointer.interact_pos()) {
-                self.screen_to_cell_coords(final_board_rect, pointer_pos)
-            } else {
-                None
-            }
+        // Sprawdzamy interakcje myszy
+        let pointer_pos = ui.input(|i| i.pointer.interact_pos());
+        let hovered_cell = if let Some(pos) = pointer_pos {
+            self.screen_to_cell_coords(final_board_rect, pos)
         } else {
             None
         };
         
-        clicked_cell
+        let clicked_cell = if ui.input(|i| i.pointer.any_click()) {
+            hovered_cell
+        } else {
+            None
+        };
+        
+        let is_mouse_down = ui.input(|i| i.pointer.primary_down());
+        let mouse_pressed = ui.input(|i| i.pointer.primary_pressed());
+        let mouse_released = ui.input(|i| i.pointer.primary_released());
+        
+        MouseInteraction {
+            clicked_cell,
+            hovered_cell,
+            is_mouse_down,
+            mouse_pressed,
+            mouse_released,
+        }
     }
     
     /// Renderuje planszę w określonym prostokącie

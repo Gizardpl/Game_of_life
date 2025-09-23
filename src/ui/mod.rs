@@ -7,5 +7,5 @@ pub mod render;
 pub mod side_panel;
 
 // Re-eksportujemy główne typy
-pub use render::GameRenderer;
+pub use render::{GameRenderer, MouseInteraction};
 pub use side_panel::SidePanel;
